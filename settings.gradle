@@ -1,2 +1,3 @@
+include ':moshi'
 include ':app'
 rootProject.name = "moshi-kotlin-nullsafe"
