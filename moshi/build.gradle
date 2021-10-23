@@ -1,6 +1,7 @@
 plugins {
     id 'java-library'
     id 'kotlin'
+    id 'maven'
 }
 
 java {
@@ -9,5 +10,8 @@ java {
 }
 
 dependencies {
-    implementation("com.squareup.moshi:moshi-kotlin:1.12.0")
+    api("com.squareup.moshi:moshi-kotlin:1.12.0")
+    testImplementation 'junit:junit:4.13.2'
 }
+
+group = 'com.github.sparklexin'

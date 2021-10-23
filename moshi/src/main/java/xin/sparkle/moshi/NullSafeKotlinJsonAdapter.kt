@@ -13,18 +13,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.squareup.moshi.kotlin.reflect
+package xin.sparkle.moshi
 
-import com.squareup.moshi.*
+import com.squareup.moshi.Json
+import com.squareup.moshi.JsonAdapter
+import com.squareup.moshi.JsonDataException
+import com.squareup.moshi.JsonReader
+import com.squareup.moshi.JsonWriter
+import com.squareup.moshi.Moshi
 import com.squareup.moshi.internal.Util
 import com.squareup.moshi.internal.Util.generatedAdapter
 import com.squareup.moshi.internal.Util.resolve
+import com.squareup.moshi.rawType
 import java.lang.reflect.Modifier
 import java.lang.reflect.Type
 import kotlin.reflect.KFunction
 import kotlin.reflect.KMutableProperty1
 import kotlin.reflect.KParameter
 import kotlin.reflect.KProperty1
+import kotlin.reflect.KType
 import kotlin.reflect.full.findAnnotation
 import kotlin.reflect.full.memberProperties
 import kotlin.reflect.full.primaryConstructor
@@ -45,11 +52,12 @@ private val ABSENT_VALUE = Any()
  * This class encodes Kotlin classes using their properties. It decodes them by first invoking the
  * constructor, and then by setting any additional properties that exist, if any.
  */
-internal class KotlinJsonAdapter<T>(
+internal class NullSafeKotlinJsonAdapter<T>(
     val constructor: KFunction<T>,
     val allBindings: List<Binding<T, Any?>?>,
     val nonTransientBindings: List<Binding<T, Any?>>,
-    val options: JsonReader.Options
+    val options: JsonReader.Options,
+    val defaultValueProviders: List<DefaultValueProvider>
 ) : JsonAdapter<T>() {
 
     override fun fromJson(reader: JsonReader): T {
@@ -77,11 +85,14 @@ internal class KotlinJsonAdapter<T>(
             values[propertyIndex] = binding.adapter.fromJson(reader)
 
             if (values[propertyIndex] == null && !binding.property.returnType.isMarkedNullable) {
-                throw Util.unexpectedNull(
-                    binding.property.name,
-                    binding.jsonName,
-                    reader
-                )
+                values[propertyIndex] = provideDefaultValue(binding.property.returnType)
+                if (values[propertyIndex] == null) {
+                    throw Util.unexpectedNull(
+                        binding.property.name,
+                        binding.jsonName,
+                        reader
+                    )
+                }
             }
         }
         reader.endObject()
@@ -93,11 +104,21 @@ internal class KotlinJsonAdapter<T>(
                 when {
                     constructor.parameters[i].isOptional -> isFullInitialized = false
                     constructor.parameters[i].type.isMarkedNullable -> values[i] = null // Replace absent with null.
-                    else -> throw Util.missingProperty(
-                        constructor.parameters[i].name,
-                        allBindings[i]?.jsonName,
-                        reader
-                    )
+                    else -> {
+                        allBindings[i]?.let { binding ->
+                            val result = provideDefaultValue(binding.property.returnType)
+                            if (result != null) {
+                                values[i] = result
+                            }
+                        }
+                        if (values[i] === ABSENT_VALUE) {
+                            throw Util.missingProperty(
+                                constructor.parameters[i].name,
+                                allBindings[i]?.jsonName,
+                                reader
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -117,6 +138,16 @@ internal class KotlinJsonAdapter<T>(
         }
 
         return result
+    }
+
+    private fun provideDefaultValue(kType: KType): Any? {
+        defaultValueProviders.forEach {
+            val result = it.provideDefaultValue(kType)
+            if (result != null) {
+                return result
+            }
+        }
+        return null
     }
 
     override fun toJson(writer: JsonWriter, value: T?) {
@@ -178,7 +209,10 @@ internal class KotlinJsonAdapter<T>(
     }
 }
 
-class KotlinJsonAdapterFactory : JsonAdapter.Factory {
+class NullSafeKotlinJsonAdapterFactory(
+    private val providers: List<DefaultValueProvider> = listOf(),
+    private val useBuildInProviders: Boolean = true
+) : JsonAdapter.Factory {
     override fun create(type: Type, annotations: MutableSet<out Annotation>, moshi: Moshi):
             JsonAdapter<*>? {
         if (annotations.isNotEmpty()) return null
@@ -221,7 +255,7 @@ class KotlinJsonAdapterFactory : JsonAdapter.Factory {
         val parametersByName = constructor.parameters.associateBy { it.name }
         constructor.isAccessible = true
 
-        val bindingsByName = LinkedHashMap<String, KotlinJsonAdapter.Binding<Any, Any?>>()
+        val bindingsByName = LinkedHashMap<String, NullSafeKotlinJsonAdapter.Binding<Any, Any?>>()
 
         for (property in rawTypeKotlin.memberProperties) {
             val parameter = parametersByName[property.name]
@@ -259,7 +293,7 @@ class KotlinJsonAdapterFactory : JsonAdapter.Factory {
             )
 
             @Suppress("UNCHECKED_CAST")
-            bindingsByName[property.name] = KotlinJsonAdapter.Binding(
+            bindingsByName[property.name] = NullSafeKotlinJsonAdapter.Binding(
                 name,
                 jsonAnnotation?.name ?: name,
                 adapter,
@@ -269,7 +303,7 @@ class KotlinJsonAdapterFactory : JsonAdapter.Factory {
             )
         }
 
-        val bindings = ArrayList<KotlinJsonAdapter.Binding<Any, Any?>?>()
+        val bindings = ArrayList<NullSafeKotlinJsonAdapter.Binding<Any, Any?>?>()
 
         for (parameter in constructor.parameters) {
             val binding = bindingsByName.remove(parameter.name)
@@ -286,6 +320,13 @@ class KotlinJsonAdapterFactory : JsonAdapter.Factory {
 
         val nonTransientBindings = bindings.filterNotNull()
         val options = JsonReader.Options.of(*nonTransientBindings.map { it.name }.toTypedArray())
-        return KotlinJsonAdapter(constructor, bindings, nonTransientBindings, options).nullSafe()
+
+        val mergedProviders = mutableListOf<DefaultValueProvider>()
+        mergedProviders.addAll(providers)
+        if (useBuildInProviders) {
+            val buildInProviders: List<DefaultValueProvider> = listOf(BuildInDefaultValueProvider())
+            mergedProviders.addAll(buildInProviders)
+        }
+        return NullSafeKotlinJsonAdapter(constructor, bindings, nonTransientBindings, options, mergedProviders).nullSafe()
     }
 }
