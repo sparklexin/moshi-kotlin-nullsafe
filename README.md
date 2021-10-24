@@ -4,9 +4,9 @@
 
 ## 1. moshi-kotlin
 
-`moshi-kotlin` support kotlin type safe check.
+[moshi-kotlin](https://github.com/square/moshi/tree/master/kotlin) support kotlin type safe check.
 
-When parsing json, fields declared as non-empty types may throw JsonDataException
+When parsing json, fields declared as non-null types may throw JsonDataException
 
 1. Missing property：`JsonDataException("Non-null value '%s' was null at %s")`
 2. Unexpected null value：`JsonDataException("Required value '%s' missing at %s")`
@@ -137,7 +137,7 @@ internal class BuildInDefaultValueProvider : DefaultValueProvider {
 }
 ```
 
-Developers can use your own `DefaultValueProvider`
+Developers can use your own `DefaultValueProvider` to support more types.
 
 ```kotlin
 class NullSafeKotlinJsonAdapterFactory(

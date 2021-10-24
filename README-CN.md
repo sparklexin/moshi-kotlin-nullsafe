@@ -4,7 +4,7 @@
 
 ## 1. moshi-kotlin
 
-`moshi-kotlin`支持kotlin类型安全校验
+[moshi-kotlin](https://github.com/square/moshi/tree/master/kotlin)支持kotlin类型安全校验
 
 json解析时，对于声明为非空类型的字段，可能会抛出异常
 
@@ -141,7 +141,7 @@ internal class BuildInDefaultValueProvider : DefaultValueProvider {
 }
 ```
 
-使用者可以自定义`DefaultValueProvider` ，传入`NullSafeKotlinJsonAdapterFactory`
+使用者可以自定义`DefaultValueProvider`以支持更多的类型。
 
 ```kotlin
 class NullSafeKotlinJsonAdapterFactory(
