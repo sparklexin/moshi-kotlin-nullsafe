@@ -4,7 +4,7 @@
 
 ## 1. moshi-kotlin
 
-[moshi-kotlin](https://github.com/square/moshi/tree/master/kotlin) support kotlin type safe check.
+[moshi-kotlin](https://github.com/square/moshi/tree/master/moshi-kotlin) support kotlin type safe check.
 
 When parsing json, fields declared as non-null types may throw JsonDataException
 
